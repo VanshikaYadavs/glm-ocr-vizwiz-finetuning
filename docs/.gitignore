@@ -1,0 +1,14 @@
+dataset/
+train/
+val/
+
+merged-vizwiz/
+saves/
+
+.venv/
+.venv311/
+.venv-mlx313/
+
+*.safetensors
+*.bin
+*.pt
