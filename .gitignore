@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+
+.venv/
+.venv311/
+.venv-mlx313/
+
+saves/
+merged-vizwiz/
+
+dataset/
+train/
+val/
+
+*.safetensors
+*.bin
+*.pt
