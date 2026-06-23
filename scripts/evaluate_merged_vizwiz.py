@@ -2,6 +2,7 @@ import json
 import re
 from pathlib import Path
 from rapidfuzz.distance import Levenshtein
+from rapidfuzz import fuzz
 
 import torch
 from PIL import Image
@@ -11,7 +12,7 @@ from transformers import AutoProcessor, AutoModelForImageTextToText
 # CONFIG
 # -------------------
 
-MODEL_PATH = "merged-vizwiz"
+MODEL_PATH = "merged-vizwiz-kaggle-20000"
 
 DATASET_JSON = "/Users/ailabiitbhu14/Desktop/Projects/glm ocr/GLM-OCR/dataset/vizwiz/val_glmocr_full.json"
 
@@ -57,6 +58,40 @@ def normalize(text):
     text = re.sub(r"\s+", " ", text)
     return text
 
+def relaxed_match(gt, pred):
+    gt = gt.lower().strip()
+    pred = pred.lower().strip()
+
+    NO_ANSWER_LABELS = {
+    "unanswerable",
+    "unsuitable",
+    "unsuitable image",
+    "cannot determine",
+    "can't tell"
+    }
+
+    if gt in NO_ANSWER_LABELS and pred in NO_ANSWER_LABELS:
+        return True
+
+    # normalize special labels
+    gt = gt.replace("unsuitable image", "unsuitable")
+    pred = pred.replace("unsuitable image", "unsuitable")
+
+    # exact match
+    if gt == pred:
+        return True
+
+    # one contains the other
+    if gt in pred or pred in gt:
+        return True
+
+    # fuzzy similarity
+    if fuzz.ratio(gt, pred) >= 70:
+        return True
+
+    return False
+
+
 # -------------------
 # LOAD DATASET
 # -------------------
@@ -67,6 +102,7 @@ with open(DATASET_JSON, "r") as f:
 data = data[:LIMIT]
 
 correct = 0
+relaxed_correct = 0
 total = 0
 
 # -------------------
@@ -116,7 +152,7 @@ for idx, sample in enumerate(data):
      with torch.no_grad():
          outputs = model.generate(
              **inputs,
-             max_new_tokens=20
+             max_new_tokens=8
          )
  
      generated_ids = outputs[:, inputs["input_ids"].shape[1]:]
@@ -151,10 +187,14 @@ for idx, sample in enumerate(data):
 
     word_total += max(len(ref_words), 1)
 
-    match = pred_norm == ref_norm
+    strict_match = pred_norm == ref_norm
+    relaxed = relaxed_match(ref_norm, pred_norm)
 
-    if match:
+    if strict_match:
         correct += 1
+
+    if relaxed:
+        relaxed_correct += 1
 
     total += 1
 
@@ -162,18 +202,23 @@ for idx, sample in enumerate(data):
         f"[{idx+1}/{LIMIT}] "
         f"GT='{reference}' "
         f"PRED='{prediction}' "
-        f"MATCH={match}"
+        f"STRICT={strict_match} RELAXED={relaxed}"
     )
 
 accuracy = correct / total
 cer = char_distance / char_total
 wer = word_distance / word_total
 
-
 print("\n===================")
-print("EXACT MATCH:", accuracy)
-print("CORRECT:", correct)
+
+print("STRICT EXACT MATCH:", correct / total)
+print("STRICT CORRECT:", correct)
+
+print("RELAXED EXACT MATCH:", relaxed_correct / total)
+print("RELAXED CORRECT:", relaxed_correct)
+
 print("TOTAL:", total)
-print("CER:", cer)
-print("WER:", wer)
+print("CER:", char_distance / char_total)
+print("WER:", word_distance / word_total)
+
 print("===================")
